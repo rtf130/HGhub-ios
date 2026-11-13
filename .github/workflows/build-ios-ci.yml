@@ -11,7 +11,7 @@ on:
         description: "Artifact name suffix"
         required: false
         default: "fix"
-  # 无人值守重试：每 30 分钟自动试一次，抢到 macOS 机器就出包
+  # 无人值守重试：每 10 分钟自动试一次，抢到 macOS 机器就出包
   schedule:
     - cron: "*/10 * * * *"
 
@@ -26,14 +26,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 读取版本号
-        id: ver
-        shell: bash
-        run: |
-          V="$(node -p "require('./src-tauri/tauri.conf.json').version")"
-          echo "version=$V" >> "$GITHUB_OUTPUT"
-          echo "building $V on ${{ inputs.runner || 'macos-13' }}"
-
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -42,6 +34,14 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+
+      - name: Read version
+        id: ver
+        shell: bash
+        run: |
+          V="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "building $V on ${{ inputs.runner || 'macos-13' }}"
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -52,10 +52,10 @@ jobs:
           workspaces: src-tauri -> target
           key: ios-build-${{ inputs.runner || 'macos-13' }}
 
-      - name: 安装依赖
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: 初始化 iOS Xcode 工程
+      - name: Init iOS Xcode project
         run: |
           pnpm tauri ios init --ci
           for plist in $(find src-tauri/gen/apple -name "Info.plist" 2>/dev/null); do
@@ -73,13 +73,13 @@ jobs:
         env:
           APPLE_DEVELOPMENT_TEAM: "ABCDE12345"
 
-      - name: 构建 iOS 应用与打包 IPA
+      - name: Build and package IPA
         shell: bash
         env:
           APP_VERSION: ${{ steps.ver.outputs.version }}
         run: bash scripts/build-ios-unsigned.sh "$APP_VERSION"
 
-      - name: 上传 IPA 产物
+      - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: HGhub-iOS-IPA-${{ inputs.tag || 'scheduled' }}
