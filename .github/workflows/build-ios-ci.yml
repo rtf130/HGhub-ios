@@ -11,11 +11,14 @@ on:
         description: "Artifact name suffix"
         required: false
         default: "fix"
+  # 无人值守重试：每 30 分钟自动试一次，抢到 macOS 机器就出包
+  schedule:
+    - cron: "*/30 * * * *"
 
 jobs:
   ios:
     name: iOS Build (IPA)
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ inputs.runner || 'macos-13' }}
     permissions:
       contents: read
     env:
@@ -29,7 +32,7 @@ jobs:
         run: |
           V="$(node -p "require('./src-tauri/tauri.conf.json').version")"
           echo "version=$V" >> "$GITHUB_OUTPUT"
-          echo "building version $V on ${{ inputs.runner }}"
+          echo "building $V on ${{ inputs.runner || 'macos-13' }}"
 
       - uses: pnpm/action-setup@v4
         with:
@@ -47,7 +50,7 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
-          key: ios-build-${{ inputs.runner }}
+          key: ios-build-${{ inputs.runner || 'macos-13' }}
 
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
@@ -79,6 +82,6 @@ jobs:
       - name: 上传 IPA 产物
         uses: actions/upload-artifact@v4
         with:
-          name: HGhub-iOS-IPA-${{ inputs.tag }}
+          name: HGhub-iOS-IPA-${{ inputs.tag || 'scheduled' }}
           path: artifacts/*
           if-no-files-found: error
