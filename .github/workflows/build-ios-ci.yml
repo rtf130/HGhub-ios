@@ -13,7 +13,7 @@ on:
         default: "fix"
   # 无人值守重试：每 30 分钟自动试一次，抢到 macOS 机器就出包
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "*/10 * * * *"
 
 jobs:
   ios:
