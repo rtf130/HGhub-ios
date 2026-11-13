@@ -20,7 +20,7 @@ jobs:
     name: iOS Build (IPA)
     runs-on: ${{ inputs.runner || 'macos-13' }}
     permissions:
-      contents: read
+      contents: write
     env:
       APPLE_DEVELOPMENT_TEAM: "ABCDE12345"
     steps:
@@ -85,3 +85,17 @@ jobs:
           name: HGhub-iOS-IPA-${{ inputs.tag || 'scheduled' }}
           path: artifacts/*
           if-no-files-found: error
+
+      - name: Publish IPA to Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          TAG="v${V}-fix"
+          NOTES="HGhub ${V} iOS 修复版（未签名 ipa）\n\n- 修复「我的」页空状态未居中导致的下半屏空白\n- 用 Sideloadly / 轻松签 自签安装"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" artifacts/*.ipa --clobber
+          else
+            gh release create "$TAG" artifacts/*.ipa --title "HGhub ${V} iOS 修复版" --notes "$NOTES" --latest
+          fi
