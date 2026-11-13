@@ -1,0 +1,26 @@
+# Cirrus CI 备选（对开源项目免费提供 macOS 机器）
+# 用法：cirrus-ci.com 用 GitHub 登录 → 授权 rtf130/HGhub-ios → 自动按本文件构建
+task:
+  name: HGhub iOS IPA (unsigned)
+  timeout_in: 90m
+  macos_instance:
+    image: ghcr.io/cirruslabs/macos-sonoma-xcode:latest
+  env:
+    APPLE_DEVELOPMENT_TEAM: ABCDE12345
+  install_script:
+    - brew install node@22 pnpm || true
+    - export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
+    - node --version && pnpm --version
+    - curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
+    - source "$HOME/.cargo/env" && rustup target add aarch64-apple-ios
+  build_script:
+    - export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
+    - source "$HOME/.cargo/env"
+    - pnpm install --frozen-lockfile
+    - pnpm tauri ios init --ci
+    - VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+    - echo "building $VERSION"
+    - bash scripts/build-ios-unsigned.sh "$VERSION"
+  artifacts:
+    path: "artifacts/*.ipa"
+    expires_in: 30 days
