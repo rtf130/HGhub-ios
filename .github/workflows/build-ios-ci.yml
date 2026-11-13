@@ -1,6 +1,7 @@
 name: Build iOS IPA (CI)
 
 on:
+  # 只保留手动触发：构建已成功（v1.2.2-fix），不再每 10 分钟自动重试
   workflow_dispatch:
     inputs:
       runner:
@@ -11,9 +12,6 @@ on:
         description: "Artifact name suffix"
         required: false
         default: "fix"
-  # 无人值守重试：每 10 分钟自动试一次，抢到 macOS 机器就出包
-  schedule:
-    - cron: "*/10 * * * *"
 
 jobs:
   ios:
@@ -82,7 +80,7 @@ jobs:
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: HGhub-iOS-IPA-${{ inputs.tag || 'scheduled' }}
+          name: HGhub-iOS-IPA-${{ inputs.tag || 'manual' }}
           path: artifacts/*
           if-no-files-found: error
 
