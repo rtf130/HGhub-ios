@@ -1,0 +1,37 @@
+# Codemagic 免费 macOS 构建（备选方案，当 GitHub 的 macOS runner 抢不到时用）
+# 用法：codemagic.io 用 GitHub 登录 → Add application → 选 rtf130/HGhub-ios → 选 Codemagic YAML → Start build
+workflows:
+  ios-ipa:
+    name: HGhub iOS IPA (unsigned)
+    instance_type: mac_mini_m2
+    max_build_duration: 90
+    environment:
+      node: 22
+      xcode: latest
+    scripts:
+      - name: 启用 pnpm
+        script: |
+          corepack enable
+          corepack prepare pnpm@10 --activate
+          pnpm --version
+      - name: 安装 Rust
+        script: |
+          curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain stable
+          source "$HOME/.cargo/env"
+          rustc --version
+          rustup target add aarch64-apple-ios
+      - name: 安装前端依赖
+        script: |
+          pnpm install --frozen-lockfile
+      - name: 初始化 iOS 工程
+        script: |
+          source "$HOME/.cargo/env"
+          pnpm tauri ios init --ci
+      - name: 构建并打包 ipa
+        script: |
+          source "$HOME/.cargo/env"
+          VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          echo "building $VERSION"
+          bash scripts/build-ios-unsigned.sh "$VERSION"
+    artifacts:
+      - artifacts/*.ipa
