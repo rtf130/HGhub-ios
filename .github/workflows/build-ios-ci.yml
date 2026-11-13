@@ -1,0 +1,84 @@
+name: Build iOS IPA (CI)
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Runner label"
+        required: false
+        default: "macos-13"
+      tag:
+        description: "Artifact name suffix"
+        required: false
+        default: "fix"
+
+jobs:
+  ios:
+    name: iOS Build (IPA)
+    runs-on: ${{ inputs.runner }}
+    permissions:
+      contents: read
+    env:
+      APPLE_DEVELOPMENT_TEAM: "ABCDE12345"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 读取版本号
+        id: ver
+        shell: bash
+        run: |
+          V="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "building version $V on ${{ inputs.runner }}"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: ios-build-${{ inputs.runner }}
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 初始化 iOS Xcode 工程
+        run: |
+          pnpm tauri ios init --ci
+          for plist in $(find src-tauri/gen/apple -name "Info.plist" 2>/dev/null); do
+            for key in "UISupportedInterfaceOrientations" "UISupportedInterfaceOrientations~iphone" "UISupportedInterfaceOrientations~ipad"; do
+              /usr/libexec/PlistBuddy -c "Delete :${key}" "$plist" 2>/dev/null || true
+              /usr/libexec/PlistBuddy -c "Add :${key} array" "$plist"
+              /usr/libexec/PlistBuddy -c "Add :${key}:0 string UIInterfaceOrientationPortrait" "$plist"
+              /usr/libexec/PlistBuddy -c "Add :${key}:1 string UIInterfaceOrientationLandscapeLeft" "$plist"
+              /usr/libexec/PlistBuddy -c "Add :${key}:2 string UIInterfaceOrientationLandscapeRight" "$plist"
+            done
+            /usr/libexec/PlistBuddy -c "Delete :NSAppTransportSecurity" "$plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$plist"
+            /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$plist"
+          done
+        env:
+          APPLE_DEVELOPMENT_TEAM: "ABCDE12345"
+
+      - name: 构建 iOS 应用与打包 IPA
+        shell: bash
+        env:
+          APP_VERSION: ${{ steps.ver.outputs.version }}
+        run: bash scripts/build-ios-unsigned.sh "$APP_VERSION"
+
+      - name: 上传 IPA 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: HGhub-iOS-IPA-${{ inputs.tag }}
+          path: artifacts/*
+          if-no-files-found: error
