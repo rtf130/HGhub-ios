@@ -69,7 +69,7 @@ pub fn run() {
             // iOS：关掉 UIKit 对 WKWebView 的自动安全区内缩，并把 WebView 底色铺深，
             // 否则底部会露出窗口底色（浅色模式下是一条白边，视频页上下留白也不连贯）
             #[cfg(target_os = "ios")]
-            ios_webview::paint_dark_background(app);
+            ios_webview::setup(app);
             Ok(())
         })
         .plugin(
@@ -152,7 +152,7 @@ pub fn run() {
             api::check_update,
             api::open_url,
             api::set_orientation,
-            api::ios_fullbleed,
+            api::safe_area_insets,
             api::api_login,
             api::api_register,
             api::api_logout,
