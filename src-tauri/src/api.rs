@@ -193,14 +193,19 @@ pub async fn set_orientation(app: tauri::AppHandle, landscape: bool) -> Result<(
     Ok(())
 }
 
-/// iOS：前端量完真实安全区后调用，把 WKWebView 切成全屏（不再自动内缩）。
-/// 其他平台是空操作。
+/// iOS：返回原生实测的安全区（pt）。`.never` 模式下 `env(safe-area-inset-*)` 会归零，
+/// 前端用这个值排版。其他平台返回 0。
 #[tauri::command]
-pub fn ios_fullbleed(app: tauri::AppHandle) {
+pub fn safe_area_insets() -> serde_json::Value {
     #[cfg(target_os = "ios")]
-    crate::ios_webview::apply_fullbleed(&app);
+    {
+        let (top, bottom) = crate::ios_webview::cached_insets();
+        serde_json::json!({ "top": top, "bottom": bottom })
+    }
     #[cfg(not(target_os = "ios"))]
-    let _ = &app;
+    {
+        serde_json::json!({ "top": 0.0, "bottom": 0.0 })
+    }
 }
 
 #[cfg(target_os = "ios")]
