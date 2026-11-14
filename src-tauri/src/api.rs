@@ -193,6 +193,16 @@ pub async fn set_orientation(app: tauri::AppHandle, landscape: bool) -> Result<(
     Ok(())
 }
 
+/// iOS：前端量完真实安全区后调用，把 WKWebView 切成全屏（不再自动内缩）。
+/// 其他平台是空操作。
+#[tauri::command]
+pub fn ios_fullbleed(app: tauri::AppHandle) {
+    #[cfg(target_os = "ios")]
+    crate::ios_webview::apply_fullbleed(&app);
+    #[cfg(not(target_os = "ios"))]
+    let _ = &app;
+}
+
 #[cfg(target_os = "ios")]
 fn request_ios_orientation(landscape: bool) {
     use std::ffi::{c_char, c_void};
