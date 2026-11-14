@@ -21,9 +21,11 @@ extern "C" {
 pub fn disable_auto_insets(app: &tauri::App) {
     use tauri::Manager;
 
-    let Some(webview) = app.get_webview("main") else {
+    // iOS 的主窗口就是 WebviewWindow；用 AsRef 取到内部的 Webview 再拿 WKWebView 指针
+    let Some(window) = app.get_webview_window("main") else {
         return;
     };
+    let webview: &tauri::Webview<_> = window.as_ref();
 
     let _ = webview.with_webview(|pw| unsafe {
         let wk = pw.inner();
