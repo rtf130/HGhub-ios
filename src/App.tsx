@@ -217,29 +217,29 @@ function ShellInner({ collapsed, theater }: { collapsed: boolean; theater: boole
 /* ============ 移动端（无壳） ============ */
 function MobileShell() {
   const { platform } = useStore();
-  /* iOS 全屏：先把真实安全区量出来（此时 WebView 还是 .automatic，env() 有效），
-     写成 --sat/--sab；再让原生关掉自动内缩，页面才能铺满屏幕又不被刘海挡住。
-     顺序不能反：切成 .never 之后 WebKit 会把 env(safe-area-inset-*) 报成 0。 */
-  const [inset, setInset] = useState<{ top: number; bottom: number } | null>(null);
+  /* iOS 全屏：原生在 setup 里已经把 WebView 切成 .never（页面铺满屏幕），
+     但那样 WebKit 会把 env(safe-area-inset-*) 报成 0 —— 所以安全区改由原生
+     `safe_area_insets` 命令给实测值。先用常见值兜底，拿到原生值后再校正。 */
+  const [inset, setInset] = useState<{ top: number; bottom: number }>(
+    platform === "ios" ? { top: 47, bottom: 34 } : { top: 0, bottom: 0 },
+  );
   useEffect(() => {
-    const probe = document.createElement("div");
-    probe.style.cssText =
-      "position:fixed;top:0;left:0;width:0;height:0;visibility:hidden;pointer-events:none;" +
-      "padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)";
-    document.documentElement.appendChild(probe);
-    const cs = getComputedStyle(probe);
-    const top = Math.round(parseFloat(cs.paddingTop) || 0);
-    const bottom = Math.round(parseFloat(cs.paddingBottom) || 0);
-    probe.remove();
-    setInset({ top, bottom });
-    if (platform === "ios") invoke("ios_fullbleed").catch(() => {});
+    if (platform !== "ios") return;
+    invoke<{ top: number; bottom: number }>("safe_area_insets")
+      .then((v) => {
+        if (v && Number.isFinite(v.top) && v.top > 0 && v.top <= 200 &&
+            Number.isFinite(v.bottom) && v.bottom >= 0 && v.bottom <= 200) {
+          setInset({ top: v.top, bottom: v.bottom });
+        }
+      })
+      .catch(() => {});
   }, [platform]);
 
   return (
     <div className={`absolute inset-0 flex flex-col bg-canvas plat-${platform}`}
       style={{
-        "--sat": inset ? `max(${inset.top}px, env(safe-area-inset-top), 12px)` : "max(env(safe-area-inset-top), 12px)",
-        "--sab": inset ? `max(${inset.bottom}px, env(safe-area-inset-bottom), 16px)` : "max(env(safe-area-inset-bottom), 16px)",
+        "--sat": `max(${inset.top}px, env(safe-area-inset-top), 12px)`,
+        "--sab": `max(${inset.bottom}px, env(safe-area-inset-bottom), 16px)`,
       } as React.CSSProperties}>
       <div className="relative flex-1 min-h-0">
         <AppBody />
