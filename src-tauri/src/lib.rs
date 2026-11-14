@@ -3,6 +3,8 @@ mod lines;
 mod logging;
 #[cfg(target_os = "macos")]
 mod macos_titlebar;
+#[cfg(target_os = "ios")]
+mod ios_webview;
 mod media;
 mod net;
 mod network_policy;
@@ -64,6 +66,10 @@ pub fn run() {
             // macOS 主窗口在此创建：先按系统红绿灯尺寸算出居中位置（见 macos_titlebar.rs）
             #[cfg(target_os = "macos")]
             macos_titlebar::create_main_window(app)?;
+            // iOS：关掉 UIKit 对 WKWebView 的自动安全区内缩，并把 WebView 底色铺深，
+            // 否则底部会露出窗口底色（浅色模式下是一条白边，视频页上下留白也不连贯）
+            #[cfg(target_os = "ios")]
+            ios_webview::disable_auto_insets(app);
             Ok(())
         })
         .plugin(
