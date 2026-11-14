@@ -1,14 +1,15 @@
-//! iOS：WKWebView 自动安全区内缩与底色的修正。
+//! iOS：WKWebView 底色修正。
 //!
-//! UIKit 默认 `contentInsetAdjustmentBehavior = automatic`，会按安全区再给页面套一层
-//! content inset：视口被缩小「顶安全区 + 底安全区」，而页面仍从屏幕左上角开始画，
-//! 于是底部露出 WebView / 窗口的底色（浅色模式下就是一条白边）。
-//! 项目 CSS 里已经用 `--sat` / `--sab` 处理过一次安全区（见 App.tsx 的 MobileShell），
-//! 原生再缩一次等于重复留白，所以这里把自动内缩关掉（`.never`），
-//! 页面铺满全屏，`env(safe-area-inset-*)` 继续由视图本身提供。
+//! 背景：UIKit 默认 `contentInsetAdjustmentBehavior = automatic`，会按安全区给页面套一层
+//! content inset；而项目 CSS 里 MobileShell 已经用 `--sat` / `--sab` 处理过一次安全区，
+//! 视觉上就是「底栏悬空、下面露出窗口底色」。
 //!
-//! 另外把 WKWebView / UIScrollView 的底色铺成画布色，避免任何缝隙（启动瞬间、
-//! 视频页上下留白）露出系统白底。
+//! 试过把它设成 `.never`（铺满全屏）：白条是没了，但 WebKit 在这种情况下会把
+//! `env(safe-area-inset-*)` 报成 0，页面的 `--sat/--sab` 直接掉到兜底值（12/16px），
+//! 顶部内容钻进刘海（返回键被状态栏挡住）、整体高度变化导致画面像被放大 —— 收益不划算。
+//!
+//! 所以这里保留系统内缩（布局正确），只把 WKWebView / UIScrollView / UIWindow 的底色
+//! 刷成纯黑：那条露出来的带子从白变黑，和深色界面、视频页上下留白连成一片，不再割裂。
 
 use std::ffi::{c_char, c_void};
 
@@ -18,10 +19,9 @@ extern "C" {
     fn objc_msgSend();
 }
 
-pub fn disable_auto_insets(app: &tauri::App) {
+pub fn paint_dark_background(app: &tauri::App) {
     use tauri::Manager;
 
-    // iOS 的主窗口就是 WebviewWindow；用 AsRef 取到内部的 Webview 再拿 WKWebView 指针
     let Some(window) = app.get_webview_window("main") else {
         return;
     };
@@ -34,8 +34,6 @@ pub fn disable_auto_insets(app: &tauri::App) {
         }
 
         let msg0: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void =
-            std::mem::transmute(objc_msgSend as *const ());
-        let msg1_usize: unsafe extern "C" fn(*mut c_void, *mut c_void, usize) -> *mut c_void =
             std::mem::transmute(objc_msgSend as *const ());
         let msg1_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) =
             std::mem::transmute(objc_msgSend as *const ());
@@ -52,34 +50,37 @@ pub fn disable_auto_insets(app: &tauri::App) {
 
         let sel = |s: &[u8]| sel_registerName(s.as_ptr() as *const c_char);
 
-        // 1. 关掉 UIKit 的自动内缩：
-        //    UIScrollViewContentInsetAdjustmentBehavior.automatic = 0
-        //    .scrollableAxes = 1, .never = 2, .always = 3
+        // 纯黑（#000）：视频页上下留白、底栏下方露出的带子都用这个色，视觉上连成一片
+        let color_cls = objc_getClass(b"UIColor\0".as_ptr() as *const c_char);
+        if color_cls.is_null() {
+            return;
+        }
+        let black = msg4(
+            color_cls,
+            sel(b"colorWithRed:green:blue:alpha:\0"),
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+        );
+        if black.is_null() {
+            return;
+        }
+
+        // 1. WebView 本体
+        msg1_ptr(wk, sel(b"setBackgroundColor:\0"), black);
+        msg1_bool(wk, sel(b"setOpaque:\0"), 0);
+
+        // 2. 内部 UIScrollView（越界/弹跳区域也会露出来）
         let scroll = msg0(wk, sel(b"scrollView\0"));
         if !scroll.is_null() {
-            msg1_usize(scroll, sel(b"setContentInsetAdjustmentBehavior:\0"), 2);
+            msg1_ptr(scroll, sel(b"setBackgroundColor:\0"), black);
         }
 
-        // 2. 底色铺成画布色 #1a1a1a（0x1a / 255）
-        let color_cls = objc_getClass(b"UIColor\0".as_ptr() as *const c_char);
-        if !color_cls.is_null() {
-            let bg = msg4(
-                color_cls,
-                sel(b"colorWithRed:green:blue:alpha:\0"),
-                26.0 / 255.0,
-                26.0 / 255.0,
-                26.0 / 255.0,
-                1.0,
-            );
-            if !bg.is_null() {
-                msg1_ptr(wk, sel(b"setBackgroundColor:\0"), bg);
-                if !scroll.is_null() {
-                    msg1_ptr(scroll, sel(b"setBackgroundColor:\0"), bg);
-                }
-            }
+        // 3. 宿主 UIWindow：安全区那条带子实际是窗口底色
+        let ui_window = msg0(wk, sel(b"window\0"));
+        if !ui_window.is_null() {
+            msg1_ptr(ui_window, sel(b"setBackgroundColor:\0"), black);
         }
-
-        // 3. WebView 不再不透明，露出上面设的底色（而不是系统的白）
-        msg1_bool(wk, sel(b"setOpaque:\0"), 0);
     });
 }
